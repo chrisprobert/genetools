@@ -29,6 +29,11 @@ def umap_scatter(
     label_color="k",
     label_alpha=0.5,
     label_size=20,
+    highlight_cell_names=None,
+    highlight_marker_size=30,
+    highlight_marker_color="r",
+    highlight_zorder=5,
+    highlight_marker_style="s",
 ):
     """Simple umap scatter plot, with legend outside figure.
 
@@ -68,6 +73,16 @@ def umap_scatter(
     :type label_alpha: float, optional
     :param label_size: size of cluster labels, defaults to 20
     :type label_size: int, optional
+    :param highlight_cell_names: [description]
+    :type highlight_cell_names: [type]
+    :param highlight_marker_size: [description], defaults to 30
+    :type highlight_marker_size: int, optional
+    :param highlight_marker_color: [description], defaults to 'r'
+    :type highlight_marker_color: str, optional
+    :param highlight_zorder: [description], defaults to 5
+    :type highlight_zorder: int, optional
+    :param highlight_marker_style: [description], defaults to 's'
+    :type highlight_marker_style: str, optional
     :return: matplotlib figure and axes
     :rtype: (matplotlib.Figure, matplotlib.Axes)
     """
@@ -130,6 +145,17 @@ def umap_scatter(
                     color=label_color,
                     zorder=label_z_order,
                 )
+
+        # overlay: highlight cells
+        if highlight_cell_names is not None:
+            plt.scatter(
+                data.iloc[highlight_cell_names][umap_1_key],
+                data.iloc[highlight_cell_names][umap_2_key],
+                s=highlight_marker_size,
+                c=highlight_marker_color,
+                zorder=highlight_zorder,
+                marker=highlight_marker_style,
+            )
 
         sns.despine(ax=ax)
 

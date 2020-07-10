@@ -6,12 +6,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-def run_pseudotime(adata_input, roots, id_vars):
+def monte_carlo_pseudotime(adata_input, roots, id_vars):
     import scanpy as sc
 
     """[summary]
 
-    # col_names, pseudotime_vals, many_pt = run_pseudotime(adata, roots, ["full_barcode", "cluster_label"])
     :param adata_input: [description]
     :type adata_input: [type]
     :param roots: [description]
@@ -77,9 +76,7 @@ def run_pseudotime(adata_input, roots, id_vars):
 def choose_roots(adata, n_roots, cluster_key, cluster_names):
     """[summary]
 
-    # afterwards:
-    # adata[roots].obs["cluster_label"].value_counts()
-    # plot_umap_highlight_cells
+
 
     :param n_roots: [description]
     :type n_roots: [type]
@@ -98,55 +95,8 @@ def choose_roots(adata, n_roots, cluster_key, cluster_names):
     )
 
 
-def plot_umap_highlight_cells(
-    adata,
-    cell_names,
-    hue_key,
-    overlay_marker_size=30,
-    overlay_marker_color="r",
-    overlay_zorder=5,
-    overlay_marker_style="s",
-    **kwargs
-):
-    """[summary]
-
-    # plot roots or end points
-    # kwargs passed to umap_scatter
-
-    :param adata: [description]
-    :type adata: [type]
-    :param cell_names: [description]
-    :type cell_names: [type]
-    :param hue_key: [description]
-    :type hue_key: [type]
-    :param overlay_marker_size: [description], defaults to 30
-    :type overlay_marker_size: int, optional
-    :param overlay_marker_color: [description], defaults to 'r'
-    :type overlay_marker_color: str, optional
-    :param overlay_zorder: [description], defaults to 5
-    :type overlay_zorder: int, optional
-    :param overlay_marker_style: [description], defaults to 's'
-    :type overlay_marker_style: str, optional
-    :return: [description]
-    :rtype: [type]
-    """
-    fig, ax = plots.umap_scatter(adata.obs, hue_key=hue_key, **kwargs)
-    plt.scatter(
-        adata[cell_names].obsm["X_umap"][:, 0],
-        adata[cell_names].obsm["X_umap"][:, 1],
-        s=overlay_marker_size,
-        c=overlay_marker_color,
-        zorder=overlay_zorder,
-        marker=overlay_marker_style,
-    )
-    return fig, ax
-
-
 def get_end_points(trajectory_df, id_vars):
     """[summary]
-
-    # then look at adata[roots].obs["cluster_label"].value_counts()
-    # but first need to ['full_barcode'] it
 
     :param trajectory_df: [description]
     :type trajectory_df: [type]
@@ -211,9 +161,9 @@ def stochasticity(
     return fig
 
 
-def ensemble_pt_trajectories(trajectory_df, barcode_key):
+def mean_order(trajectory_df, barcode_key):
     """[summary]
-    ## Mean trajectory
+    ## Ensemble: Mean trajectory
 
     trajectories have different linear scales:
 
@@ -236,14 +186,16 @@ def ensemble_pt_trajectories(trajectory_df, barcode_key):
     :return: [description]
     :rtype: [type]
     """
-    # nope no NaNs!
-    assert not any(trajectory_df["pseudotime"].isna())
+    if any(trajectory_df["pseudotime"].isna()):
+        raise ValueError("Some cells are unreachable (NaN pseudotimes)")
 
-    # Then take each cell's mean across all trajectories (= "project cells onto this ensemble medoid trajectory")
+    # Take each cell's mean across all trajectories
+    # "project cells onto this ensemble medoid trajectory"
     mean_trajectory = trajectory_df.groupby([barcode_key], sort=False)[
         "pseudotime"
     ].mean()
-    assert not any(mean_trajectory.isna())
+    if any(mean_trajectory.isna()):
+        raise ValueError()
 
     # renormalize
     mean_trajectory = pd.Series(
@@ -254,13 +206,14 @@ def ensemble_pt_trajectories(trajectory_df, barcode_key):
 
 
 def spectral_order(
-    trajectory_df, n_matches_sample, n_cells_sample, root_cell_key, barcode_key
+    trajectory_df,
+    root_cell_key,
+    barcode_key,
+    n_trajectories_sample=None,
+    n_cells_sample=None,
 ):
-    """
-    n_matches_sample = 100  # number of trajectories to look at
-    n_cells_sample = 4400  # number of cells to look at
-    root_cell_key = 'root_cell'
-    barcode_key = 'full_barcode'
+    """[summary]
+    Expect percent normalized input.
 
     Use a kNN graph from scanpy instead of computing a dense similarity matrix:
 
@@ -275,15 +228,34 @@ def spectral_order(
     6. 2nd smallest eigenvector
 
     Previously, we were creating dense similarity matrix, where the similarity measure between two cells `i, j` is the sum over all other cells `k` of $1 - abs(P_{i,j} - P_{j,k})$. The intuition is that this gives you the ranking similarity between any two cells by comparing their probabilities of being ranked higher than other reference cells. Now are are simplifying how to create this similarity matrix.
+
+
+    :param trajectory_df: [description]
+    :type trajectory_df: [type]
+    :param root_cell_key: [description]
+    :type root_cell_key: [type]
+    :param barcode_key: [description]
+    :type barcode_key: [type]
+    :param n_trajectories_sample: [description], defaults to None
+    :type n_trajectories_sample: [type], optional
+    :param n_cells_sample: [description], defaults to None
+    :type n_cells_sample: [type], optional
+    :raises ValueError: [description]
+    :return: [description]
+    :rtype: [type]
     """
+
+    # TODO: confirm percentile normalized input
 
     import scipy.sparse
     from scipy.sparse.csgraph import laplacian
-    from scipy.linalg import eigh
     from scipy.sparse.linalg import eigsh
     from sklearn import preprocessing
     import anndata
     import scanpy as sc
+
+    # Legacy code from when we passed around arrays of individual trajectories
+    # (We might bring that API back):
 
     # pseudotime_ranks = pd.concat(pseudotime_vals, axis=1)
     # pseudotime_ranks = pseudotime_ranks.apply(percentile_normalize, axis=0)
@@ -298,18 +270,25 @@ def spectral_order(
     # cells_sample[:5]
 
     # matches_sample = np.random.choice(
-    #     pseudotime_ranks.index, size=n_matches_sample, replace=False
+    #     pseudotime_ranks.index, size=n_trajectories_sample, replace=False
     # )
     # matches_sample[:5]
 
     # pseudotime_ranks_subsample = pseudotime_ranks.loc[matches_sample][cells_sample]
     # pseudotime_ranks_subsample.shape, pseudotime_ranks.shape
 
+    if not n_cells_sample:
+        # default to 20% of cells
+        n_cells_sample = int(trajectory_df[barcode_key].nunique() * 0.2)
+    if not n_trajectories_sample:
+        # default to 10% of trajectories
+        n_trajectories_sample = int(trajectory_df[root_cell_key].nunique() * 0.1)
+
     cells_sample = np.random.choice(
         trajectory_df[barcode_key].unique(), size=n_cells_sample, replace=False
     )
     matches_sample = np.random.choice(
-        trajectory_df[root_cell_key].unique(), size=n_matches_sample, replace=False
+        trajectory_df[root_cell_key].unique(), size=n_trajectories_sample, replace=False
     )
     # n_experiments x n_cells, percentile normalized
     pseudotime_ranks_subsample = trajectory_df[
@@ -317,12 +296,11 @@ def spectral_order(
         & (trajectory_df[barcode_key].isin(cells_sample))
     ].pivot(index=root_cell_key, columns=barcode_key, values="pseudotime")
 
-    # make P
-
-    # number of matches, as in a tournament where each match = all players compete against each other
-    n_matches = pseudotime_ranks_subsample.shape[0]
-    # number of players in the tournament
-    n_cells = pseudotime_ranks_subsample.shape[1]
+    # make P, the transition matrix
+    # # number of matches, as in a tournament where each match = all players compete against each other
+    # n_matches = pseudotime_ranks_subsample.shape[0]
+    # # number of players in the tournament
+    # n_cells = pseudotime_ranks_subsample.shape[1]
 
     matches = scipy.sparse.csr_matrix(
         (pseudotime_ranks_subsample.shape[1], pseudotime_ranks_subsample.shape[1])
@@ -383,58 +361,58 @@ def spectral_order(
     # normalize each row to have same euclidean norm
 
     Q_normalized = preprocessing.normalize(Q, norm="l2")
-    Q_normalized
 
     Q_adata = anndata.AnnData(Q_normalized)
-    Q_adata
 
     # import scanpy as sc
     sc.pp.neighbors(Q_adata, use_rep="X")
 
     # laplacian of the adjacency matrix of the kNN graph
     laplacian_mat = laplacian(Q_adata.uns["neighbors"]["connectivities"], normed=False)
-    laplacian_mat
 
-    eigenvals, eigenvecs = eigsh(laplacian_mat, 2, which="SM", tol=1e-8)
+    _, eigenvecs = eigsh(laplacian_mat, 2, which="SM", tol=1e-8)
 
     # take second smallest eigenvalue
     # order along it
     labels = pseudotime_ranks_subsample.columns
-    order = [label for (idx, label) in sorted(zip(eigenvecs[:, 1], labels))]
+    order = [label for (_, label) in sorted(zip(eigenvecs[:, 1], labels))]
     # assign orders 0 -> 1, normalize / num_cells
     spectral_order_series = pd.Series(
         np.arange(len(order)) / len(order), index=order, name="spectral_order"
     )
 
-    spectral_order_series
+    # want no repeats in the order, i.e. all value counts should be 1
+    if not all(spectral_order_series.reset_index()["index"].value_counts() == 1):
+        raise ValueError("Unexpected repeats in the spectral ordering")
 
-    # want these to all be 1, i.e. no repeats in the order
-    assert all(spectral_order_series.reset_index()["index"].value_counts() == 1)
+    # sometimes eigenvector signs will be flipped, giving the reverse ordering.
+    # in these cases we should just reverse the ordering.
 
-    # add to adata
-    spectral_order_col = pd.merge(
-        adata.obs[[]],
-        spectral_order_series,
-        left_index=True,
-        right_index=True,
-        how="left",
-        sort=False,
-    )
-    assert all(spectral_order_col.index == adata.obs.index)
-    adata.obs["spectral_order"] = spectral_order_col
+    # to determine whether this is the case:
+    # choose a cell we know to be closer to the start (or end), and ensure it is closer to the start (or end).
+    # for instance, run the mean ensembling, check whether the start or end point is ahead in the spectral ordering.
+    # flip order as needed to match.
 
-    # sometimes eigenvector signs will be flipped, giving the reverse ordering
-    # in these cases we should just reverse the ordering
-    # spectral_order_series = 1-spectral_order_series
+    # another way to do this:
+    # look at mean spectral order of the root cells of all trajectories
+    # flip order if needed.
+    # (note: we subsampled the cells before running spectral ordering.
+    # so instead of using 0-position, use min-position cells from the trajectories.)
+    filtered_trajectories = trajectory_df[
+        (trajectory_df[root_cell_key].isin(matches_sample))
+        & (trajectory_df[barcode_key].isin(cells_sample))
+    ]
+    if (
+        spectral_order_series[
+            filtered_trajectories.loc[
+                filtered_trajectories.groupby("root_cell_key")["pseudotime"].idxmin()
+            ][barcode_key]
+        ].median()
+        > 0.5
+    ):
+        spectral_order_series = 1 - spectral_order_series
 
-    # we could also do this automatically by choosing a modulated SMC cell and ensuring it is closer to end
-    median_modulated_spectral_order = adata.obs[
-        ~(adata.obs["spectral_order"].isna())
-        & (adata.obs["cluster_label"].str.startswith("Modulated"))
-    ]["spectral_order"].median()
-    print(median_modulated_spectral_order)
-    if median_modulated_spectral_order < 0.5:
-        adata.obs["spectral_order"] = 1 - adata.obs["spectral_order"]
+    return spectral_order_series
 
 
 def compare_trajectories(
@@ -550,18 +528,3 @@ def plot_pseudotime_density(
         xlabel="Pseudotime",
         **kwargs
     )
-
-
-# def plot_trajectory():
-#     fig, ax = genetools.plots.umap_scatter(
-#         adata.obs,
-#         hue_key="mean_trajectory",
-#         continuous_hue=True,
-#         label_key="cluster_label",
-#         marker_size=0.1,
-#         umap_1_key="coembed_umap_1",
-#         umap_2_key="coembed_umap_2",
-#         figsize=(8, 8),
-#     )
-#     ax.set_title("Mean pseudotime on Coembed")
-#     savefig(fig, "out/scanpy/coembed.pseudotime.16wk.rob_coembed.umap.png", dpi=300)
