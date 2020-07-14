@@ -10,16 +10,44 @@ import matplotlib
 
 matplotlib.use("Agg")
 
-from genetools import plots, trajectory
+from genetools import plots, trajectory, helpers
 
 random_seed = 12345
 np.random.seed(random_seed)
 random.seed(random_seed)
 
+n_roots = 100
+root_cluster = "B"
+
+
+@pytest.fixture(scope="module")
+def roots(adata):
+    return helpers.sample_cells_from_clusters(
+        adata.obs, n_roots, "louvain", [root_cluster]
+    )
+
+
+def test_roots(adata, roots):
+    assert len(roots) == n_roots
+    assert all(adata[roots].obs["louvain"] == root_cluster)
+
+
+def test_plot_roots(roots):
+    pass
+
+
+@pytest.fixture(scope="module")
+def trajectories(adata, roots):
+    pass
+
+
+def test_trajectories(trajectories):
+    pass
+
 
 """
 TODO:
-choose roots
+choose roots with sample_cells_from_clusters
 
     # afterwards:
     # adata[roots].obs["cluster_label"].value_counts()
@@ -58,6 +86,8 @@ spectral order:
 compare_trajectories
 
 
+left merge mean_trajectory back
+
 
 # def plot_trajectory():
 #     fig, ax = genetools.plots.umap_scatter(
@@ -72,6 +102,10 @@ compare_trajectories
 #     )
 #     ax.set_title("Mean pseudotime on Coembed")
 #     savefig(fig, "out/scanpy/coembed.pseudotime.16wk.rob_coembed.umap.png", dpi=300)
+
+
+# plot density
+# fig = plot_pseudotime_density(adata, suptitle="Pseudotime Coembed (mean trajectory)", cluster_label_key="cluster_label",value_key="mean_trajectory")
 
 
 """

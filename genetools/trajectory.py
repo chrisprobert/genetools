@@ -6,45 +6,38 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-def monte_carlo_pseudotime(adata_input, roots, id_vars):
+def monte_carlo_pseudotime(adata_input, root_cells):
     import scanpy as sc
 
     """[summary]
 
+    TODO: document what must be done to adata before running dpt. i.e. PCA, neighbors, and diffmap.
+
     :param adata_input: [description]
     :type adata_input: [type]
-    :param roots: [description]
-    :type roots: [type]
+    :param root_cells: [description]
+    :type root_cells: [type]
     :param id_vars: Identifier variables in anndata obs to uniquely identify a cell. Will be passed through to output.
     :type id_vars: [type]
     :return: [description]
     :rtype: [type]
     """
-    # TODO: can we avoid passing in id_vars, and just set 'full_barcode' from obs_names
 
     adata = adata_input.copy()
 
-    if "root_cell" in id_vars or "pseudotime" in id_vars:
-        raise ValueError("Cannot include 'root_cell' or 'pseudotime' in id_vars")
-
-    # root cell names
-    col_names = []
-
-    # each entry is one trajectory from one root cell: a Series, values are the pseudotime values per-cell, and name is the root cell
+    # each entry is one trajectory from one root cell:
+    # # a Series, values are the pseudotime values per-cell, and name is the root cell
     pseudotime_vals = []
 
-    for root_cell in roots:
-        # Set root cell
+    for root_cell in root_cells:
+        # Set root cell ID
         adata.uns["iroot"] = np.where(adata.obs.index == root_cell)[0][0]
 
-        # Run DPT. Scanpy stores output in obs 'dpt_pseudotime
+        # Run DPT. Scanpy stores output in obs 'dpt_pseudotime'
         sc.tl.dpt(adata, n_dcs=min(adata.obsm["X_diffmap"].shape[1], 10), copy=False)
 
         # Save this trajectory
-        output = adata.obs["dpt_pseudotime"].copy()
-        output.name = root_cell
-        col_names.append(output.name)
-        pseudotime_vals.append(output)
+        pseudotime_vals.append(adata.obs["dpt_pseudotime"].rename(root_cell))
 
     # percentile normalize each pseudotime trajectory
     pseudotime_vals = pd.concat(pseudotime_vals, axis=1)
@@ -52,20 +45,21 @@ def monte_carlo_pseudotime(adata_input, roots, id_vars):
         stats.percentile_normalize, axis=0
     )
     if pseudotime_vals_percentile_normalized.shape != pseudotime_vals.shape:
+        # TODO: move this to tests
         raise ValueError()
 
     # Create dataframe where each row is a cell's value in a trajectory from a specific root cell.
     # i.e. convert to format: one value per cell, times # experiments
-    df = pd.concat([adata_input.obs] + pseudotime_vals_percentile_normalized, axis=1)
     df = pd.melt(
-        df.reset_index(),
-        id_vars=id_vars,
-        value_vars=col_names,
+        pseudotime_vals_percentile_normalized.rename_axis("cell_barcode").reset_index(),
+        id_vars="cell_barcode",
+        value_vars=root_cells,
         var_name="root_cell",
         value_name="pseudotime",
     )
 
-    if df.shape[0] != adata_input.obs.shape[0] * len(roots):
+    # TODO: move this to tests
+    if df.shape[0] != adata_input.obs.shape[0] * len(root_cells):
         raise ValueError(
             "Should have one value per cell, times the number of experiments"
         )
@@ -73,29 +67,14 @@ def monte_carlo_pseudotime(adata_input, roots, id_vars):
     return df
 
 
-def choose_roots(adata, n_roots, cluster_key, cluster_names):
-    """[summary]
+def get_trajectory_percentile_points(trajectory_df, percentile):
+    # get points at percentile along trajectories
+    df = trajectory_df.copy()
+    df["diff_pseudotime"] = (df["pseudotime"] - percentile).abs()
+    return df.loc[df.groupby("root_cell", sort=False)["diff_pseudotime"].idxmin()]
 
 
-
-    :param n_roots: [description]
-    :type n_roots: [type]
-    :param cluster_key: [description]
-    :type cluster_key: [type]
-    :param cluster_names: [description]
-    :type cluster_names: [type]
-    :return: [description]
-    :rtype: [type]
-    """
-    return (
-        adata.obs[adata.obs[cluster_key].isin(cluster_names)]
-        .index.to_series()
-        .sample(n_roots)
-        .values
-    )
-
-
-def get_end_points(trajectory_df, id_vars):
+def get_end_points(trajectory_df, barcode_key="cell_barcode"):
     """[summary]
 
     :param trajectory_df: [description]
@@ -107,7 +86,7 @@ def get_end_points(trajectory_df, id_vars):
     """
     return trajectory_df.loc[
         trajectory_df.groupby("root_cell", sort=False)["pseudotime"].idxmax()
-    ][id_vars]
+    ][barcode_key]
 
 
 def stochasticity(
@@ -162,7 +141,7 @@ def stochasticity(
     return fig
 
 
-def mean_order(trajectory_df, barcode_key):
+def mean_order(trajectory_df, barcode_key="cell_barcode"):
     """[summary]
     ## Ensemble: Mean trajectory
     # Take each cell's mean across all trajectories
@@ -210,7 +189,7 @@ def mean_order(trajectory_df, barcode_key):
 def spectral_order(
     trajectory_df,
     root_cell_key,
-    barcode_key,
+    barcode_key="cell_barcode",
     n_trajectories_sample=None,
     n_cells_sample=None,
 ):
@@ -372,7 +351,7 @@ def spectral_order(
     return spectral_order_series
 
 
-def compare_trajectories(
+def compare_orders(
     trajectory_1,
     trajectory_2,
     trajectory_1_label="Trajectory 1",
@@ -437,8 +416,6 @@ def plot_pseudotime_density(
     adata, cluster_label_key, value_key, figsize=(6, 8.5), **kwargs
 ):
     """[summary]
-
-    # fig = plot_pseudotime_density(adata, suptitle="Pseudotime Coembed (mean trajectory)", cluster_label_key="cluster_label",value_key="mean_trajectory")
 
     :param adata: [description]
     :type adata: [type]
