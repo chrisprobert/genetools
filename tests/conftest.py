@@ -13,33 +13,10 @@ cache_fname_adata = "data/pbmc3k.h5ad"
 cache_fname_obs = "data/pbmc3k.obs.csv"
 
 
-@pytest.fixture(scope="module")
-def adata_obs(adata):
-    """Fixture that returns an anndata object.
+def _make_adata():
+    """Generates anndata object.
     This downloads 5.9 MB of data upon the first call of the function and stores it in ./data/pbmc3k_raw.h5ad.
-    Then processed version cached at ./data/pbmc3k.h5ad (not versioned) and .data/pbmc3k.obs.csv (versioned for reference plot consistency).
-
-    To regenerate: rm ./data/pbmc3k.obs.csv
     """
-    # cache output of this fixture so we can make baseline figures
-    if os.path.exists(cache_fname_obs):
-        return pd.read_csv(cache_fname_obs, index_col=0)
-    return adata.obs
-
-
-@pytest.fixture(scope="module")
-def adata():
-    """Fixture that returns an anndata object.
-    This downloads 5.9 MB of data upon the first call of the function and stores it in ./data/pbmc3k_raw.h5ad.
-    Then processed version cached at ./data/pbmc3k.h5ad (not versioned).
-
-    To regenerate: rm ./data/pbmc3k.h5ad
-    """
-
-    # cache output of this fixture for local test speed
-    if os.path.exists(cache_fname_adata):
-        return sc.read(cache_fname_adata)
-
     # Following https://scanpy-tutorials.readthedocs.io/en/latest/pbmc3k.html
     adata = sc.datasets.pbmc3k()
 
@@ -92,7 +69,39 @@ def adata():
     # Pull a gene value into obs
     adata.obs["CST3"] = adata[:, "CST3"].X
 
-    adata.write(cache_fname_adata, compression="gzip")
-    adata.obs.to_csv(cache_fname_obs)
+    return adata
 
+
+@pytest.fixture(scope="session")
+def adata_obs():
+    """Fixture that returns an anndata obs df.
+    Cached and versioned for reference plot consistency.
+    To regenerate: rm ./data/pbmc3k.obs.csv
+    """
+    # cache output of this fixture so we can make baseline figures
+    if os.path.exists(cache_fname_obs):
+        return pd.read_csv(cache_fname_obs, index_col=0)
+
+    obs_df = _make_adata().obs
+    obs_df.to_csv(cache_fname_obs)
+    return obs_df
+
+
+@pytest.fixture(scope="session")
+def adata():
+    """Fixture that returns an anndata object.
+    The process version can be cached between test runs at ./data/pbmc3k.h5ad.
+    But it is not versioned. So every first-time user cloning the repo will end up with a different object.
+    So do not rely on this being consistent between test suite executions.
+    Instead use adata_obs for that.
+
+    To regenerate the locally cached version: rm ./data/pbmc3k.h5ad
+    """
+
+    # cache output of this fixture for local test speed
+    if os.path.exists(cache_fname_adata):
+        return sc.read(cache_fname_adata)
+
+    adata = _make_adata()
+    adata.write(cache_fname_adata, compression="gzip")
     return adata
