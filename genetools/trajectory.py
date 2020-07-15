@@ -44,9 +44,6 @@ def monte_carlo_pseudotime(adata_input, root_cells):
     pseudotime_vals_percentile_normalized = pseudotime_vals.apply(
         stats.percentile_normalize, axis=0
     )
-    if pseudotime_vals_percentile_normalized.shape != pseudotime_vals.shape:
-        # TODO: move this to tests
-        raise ValueError()
 
     # Create dataframe where each row is a cell's value in a trajectory from a specific root cell.
     # i.e. convert to format: one value per cell, times # experiments
@@ -58,38 +55,27 @@ def monte_carlo_pseudotime(adata_input, root_cells):
         value_name="pseudotime",
     )
 
-    # TODO: move this to tests
-    if df.shape[0] != adata_input.obs.shape[0] * len(root_cells):
-        raise ValueError(
-            "Should have one value per cell, times the number of experiments"
-        )
-
     return df
 
 
-def get_trajectory_percentile_points(trajectory_df, percentile):
-    # get points at percentile along trajectories
+def get_cells_at_percentile(trajectory_df, percentile):
+    """get points at percentile along trajectories
+
+    :param trajectory_df: [description]
+    :type trajectory_df: [type]
+    :param percentile: [description] (should be between 0 and 1)
+    :type percentile: [type]
+    :return: [description]
+    :rtype: [type]
+    """
+    if not (0.0 <= percentile <= 1.0):
+        raise ValueError("percentile must be between 0 and 1")
     df = trajectory_df.copy()
     df["diff_pseudotime"] = (df["pseudotime"] - percentile).abs()
     return df.loc[df.groupby("root_cell", sort=False)["diff_pseudotime"].idxmin()]
 
 
-def get_end_points(trajectory_df, barcode_key="cell_barcode"):
-    """[summary]
-
-    :param trajectory_df: [description]
-    :type trajectory_df: [type]
-    :param id_vars: [description]
-    :type id_vars: [type]
-    :return: [description]
-    :rtype: [type]
-    """
-    return trajectory_df.loc[
-        trajectory_df.groupby("root_cell", sort=False)["pseudotime"].idxmax()
-    ][barcode_key]
-
-
-def stochasticity(
+def plot_stochasticity(
     trajectory_df,
     xlabel="Pseudotime",
     ylabel="Number of unique barcodes in bin",
@@ -128,10 +114,11 @@ def stochasticity(
     # TODO: confirm percentile normalized input
 
     # group by bin ID, count unique barcodes in that bin
-    cells_by_bin = df.groupby("bin_id", sort=False)["full_barcode"].nunique()
+    cells_by_bin = df.groupby("bin_id", sort=False)["cell_barcode"].nunique()
 
     fig = plt.figure()
     plt.scatter(cells_by_bin.index, cells_by_bin.values)
+    plt.xlim(0, 1)
     if xlabel is not None:
         plt.xlabel(xlabel)
     if ylabel is not None:

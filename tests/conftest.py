@@ -42,6 +42,7 @@ def _make_adata():
 
     sc.tl.pca(adata, svd_solver="arpack")
     sc.pp.neighbors(adata, n_neighbors=10, n_pcs=40)
+    sc.tl.diffmap(adata)  # for pseudotime
     sc.tl.umap(adata)
     sc.tl.louvain(adata)
 
