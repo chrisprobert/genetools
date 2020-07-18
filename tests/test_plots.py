@@ -18,10 +18,10 @@ random.seed(random_seed)
 
 
 @pytest.mark.mpl_image_compare(savefig_kwargs={"bbox_inches": "tight"})
-def test_umap_scatter_discrete(adata_obs):
+def test_umap_scatter_discrete(adata):
     """Test umap_scatter with discrete hue."""
     fig, _ = plots.umap_scatter(
-        data=adata_obs,
+        data=adata.obs,
         umap_1_key="umap_1",
         umap_2_key="umap_2",
         hue_key="louvain",
@@ -31,10 +31,10 @@ def test_umap_scatter_discrete(adata_obs):
 
 
 @pytest.mark.mpl_image_compare
-def test_umap_scatter_continuous(adata_obs):
+def test_umap_scatter_continuous(adata):
     """Test umap_scatter with continouous hue."""
     fig, _ = plots.umap_scatter(
-        data=adata_obs,
+        data=adata.obs,
         umap_1_key="umap_1",
         umap_2_key="umap_2",
         hue_key="CST3",
