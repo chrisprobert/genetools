@@ -61,6 +61,7 @@ Common commands:
 make lint
 
 # one-time: generate test anndata, and commit so we have reproducible tests in CI
+rm -r data
 make regen-test-data
 
 # run tests

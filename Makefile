@@ -60,7 +60,6 @@ regen-snapshot-figures: ## regenerate baseline figures
 	pytest --mpl-generate-path=tests/baseline
 
 regen-test-data: ## regenerate saved test data (and baseline figures)
-	rm -r data
 	pytest --mpl-generate-path=tests/baseline --regenerate-anndata
 
 coverage: ## check code coverage quickly with the default Python
