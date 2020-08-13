@@ -1,6 +1,14 @@
 #!/usr/bin/env python
 
-"""Tests for `genetools` package."""
+"""Tests for `genetools` plots.
+
+Keep in mind when writing plotting tests:
+- Use `@pytest.mark.mpl_image_compare` decorator to automatically do snapshot testing. See README.md for how to regenerate snapshots.
+- `plt.tight_layout()` seems to produce different figure dimensions across different platforms.
+    - Avoid until we figure out how to generate figures in a consistent way with Travis CI. (Run Travis-like environment locally in Docker? Hacky.)
+- Some figures seem not to export right unless you save with tight bounding box:
+    - `@pytest.mark.mpl_image_compare(savefig_kwargs={"bbox_inches": "tight"})`
+"""
 
 import pytest
 import numpy as np
