@@ -63,6 +63,11 @@ build-docker-test-image: requirements_dev.txt
 test: build-docker-test-image
 	docker run --rm -it -v $$(pwd):/src genetools-test pytest --cov=./ --cov-report term --cov-report xml --mpl --mpl-results-path=tests/results -vv;
 
+# run tests locally, without docker, therefore omitting the snapshot tests
+test-without-figures:
+	# note: snapshot tests not run!
+	pytest --cov=./ --cov-report term --cov-report xml -vv;
+
 test-all: ## run tests on every Python version with tox
 	tox
 

@@ -69,11 +69,14 @@ make regen-test-data
 make build-docker-test-image # whenever requirements_dev.txt change
 make test
 
-# generate baseline figures
+# generate baseline figures (also happens in docker)
 make regen-snapshot-figures
 
-# regenerate test data (and baseline figures)
+# regenerate test data, and baseline figures (also happens in docker)
 make regen-test-data
+
+# run tests locally without docker, therefore omitting the snapshot tests
+make test-without-figures
 
 # bump version before submitting a PR against master (all master commits are deployed)
 bump2version patch # possible: major / minor / patch
