@@ -103,25 +103,12 @@ def umap_scatter(
             fig.colorbar(g)
         else:
             # plot discrete hues
-
-            # create colors
-            n_colors = data[hue_key].nunique()
-            if not discrete_palette:
-                discrete_palette = sns.color_palette("Spectral", n_colors=n_colors)
-
-            if len(discrete_palette) < n_colors:
-                raise ValueError("Not enough colors in palette")
-
-            # subset to exact number of colors we need (otherwise seaborn throws error)
-            discrete_palette = discrete_palette[:n_colors]
-
-            # plot
             g = sns.scatterplot(
                 data=data,
                 x=umap_1_key,
                 y=umap_2_key,
                 hue=hue_key,
-                palette=discrete_palette,
+                palette=_verify_or_create_palette(discrete_palette, data, hue_key),
                 ax=ax,
                 legend="full",
                 alpha=1,
@@ -166,9 +153,49 @@ def umap_scatter(
         # https://matplotlib.org/tutorials/intermediate/legend_guide.html#legend-location
         # note: this expands figsize so you have to savefig with bbox_inches='tight'
         if not continuous_hue:
-            plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0)
+            _pull_legend_out_of_figure()
 
         return fig, ax
+
+
+def _verify_or_create_palette(palette, data, hue_key):
+    """Verify that a particular discrete color palette has the right number of colors (subsetting if necessary).
+    Or if no color palette was provided by the user, return a default color palette.
+
+    :param palette: color palette for discrete hues if the user has supplied one, otherwise None
+    :type palette: matplotlib palette name, list of colors, or dict mapping hue values to colors, or None
+    :param data: dataframe containing observations and associated hues
+    :type data: pandas.DataFrame
+    :param hue_key: name of column in dataframe that lists hues
+    :type hue_key: str
+    :raises ValueError: if user-supplied palette has fewer colors than the number of hues in the data
+    :return: a color palette for plotting
+    :rtype: list of colors
+    """
+    n_colors = data[hue_key].nunique()
+
+    if not palette:
+        # create colors
+        palette = sns.color_palette("Spectral", n_colors=n_colors)
+
+    # confirm number of colors
+    if len(palette) < n_colors:
+        raise ValueError("Not enough colors in palette")
+
+    # subset to exact number of colors we need (otherwise seaborn throws error)
+    # TODO: make this work with matplotlib palette names or dicts mapping hue values to colors
+    return palette[:n_colors]
+
+
+def _pull_legend_out_of_figure():
+    """Pull legend outside figure to the right.
+    Note: this expands figsize so you have to savefig with bbox_inches='tight'
+
+    See:
+        - https://stackoverflow.com/a/34579525/130164
+        - https://matplotlib.org/tutorials/intermediate/legend_guide.html#legend-location
+    """
+    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left", borderaxespad=0.0)
 
 
 def horizontal_stacked_bar_plot(
@@ -263,27 +290,26 @@ def stacked_density_plot(
     overlap=False,
     **kwargs
 ):
-    """[summary]
-    Plot probability densities. value_key should range from 0 to 1.
+    """Plot probability densities by class.
 
-    :param data: [description]
-    :type data: [type]
-    :param cluster_label_key: [description]
-    :type cluster_label_key: [type]
-    :param value_key: [description]
-    :type value_key: [type]
-    :param xlabel: [description], defaults to None
-    :type xlabel: [type], optional
-    :param suptitle: [description], defaults to None
-    :type suptitle: [type], optional
-    :param figsize: [description], defaults to (6, 8.5)
+    :param data: A dataframe where each row represents one observation belonging to a particular class.
+    :type data: pandas.DataFrame
+    :param cluster_label_key: Column name identifying the class of each observation.
+    :type cluster_label_key: str
+    :param value_key: Column name identifying the observation value. Values should range from 0 to 1.
+    :type value_key: str
+    :param xlabel: X-axis label, defaults to None
+    :type xlabel: str, optional
+    :param suptitle: Figure title above stacked density plot grid, defaults to None
+    :type suptitle: str, optional
+    :param figsize: Figure size, defaults to (6, 8.5)
     :type figsize: tuple, optional
-    :param palette: [description], defaults to None
-    :type palette: [type], optional
-    :param overlap: [description], defaults to False
+    :param palette: Color palette for each class, defaults to None (in which case default palette used)
+    :type palette: matplotlib palette name, list of colors, or dict mapping class values to colors, optional
+    :param overlap: Whether to overlap the stacked density curves, defaults to False
     :type overlap: bool, optional
-    :return: [description]
-    :rtype: [type]
+    :return: Figure
+    :rtype: matplotlib.Figure
     """
     ## 1. remove without one-cell clusters because we can't draw a density for those
 
@@ -354,7 +380,7 @@ def _stacked_density_facetgrid(
 
     with sns.plotting_context("notebook"):
         with sns.axes_style("white", rc={"axes.facecolor": (0, 0, 0, 0)}):
-            g = sns.FacetGrid(
+            grid = sns.FacetGrid(
                 data,
                 row=row_var,
                 hue=hue_var,
@@ -369,10 +395,10 @@ def _stacked_density_facetgrid(
 
             ## Draw the densities in a few steps
             # this is the shaded area
-            g.map(sns.kdeplot, value_var, clip_on=False, shade=True, alpha=0.8, lw=2)
+            grid.map(sns.kdeplot, value_var, clip_on=False, shade=True, alpha=0.8, lw=2)
 
             # this is the dividing horizontal line
-            g.map(plt.axhline, y=0, lw=2, clip_on=False, ls="dashed")
+            grid.map(plt.axhline, y=0, lw=2, clip_on=False, ls="dashed")
 
             ### Add label for each facet.
 
@@ -400,42 +426,42 @@ def _stacked_density_facetgrid(
                     **kwargs
                 )
 
-            g.map(label)
+            grid.map(label)
 
             ## Beautify the plot.
-            g.set(xlim=(-0.01, 1.01))
+            grid.set(xlim=(-0.01, 1.01))
             # seems to do the trick along with sharey=False
-            g.set(ylim=(0, None))
+            grid.set(ylim=(0, None))
 
             # Some `subplots_adjust` line is necessary. without this, nothing appears
             if not overlap:
-                g.fig.subplots_adjust(hspace=0)
+                grid.fig.subplots_adjust(hspace=0)
 
             # Remove axes details that don't play will with overlap
-            g.set_titles("")
+            grid.set_titles("")
             # g.set_titles(col_template="{col_name}", row_template="")
-            g.set(yticks=[], ylabel="")
-            g.despine(bottom=True, left=True)
+            grid.set(yticks=[], ylabel="")
+            grid.despine(bottom=True, left=True)
 
             # fix x axis
             if xlabel is not None:
-                g.set_xlabels(xlabel)
+                grid.set_xlabels(xlabel)
 
             # resize
             if figsize:
-                g.fig.set_size_inches(figsize[0], figsize[1])
+                grid.fig.set_size_inches(figsize[0], figsize[1])
 
             if suptitle is not None:
-                g.fig.suptitle(suptitle, fontsize="medium")
+                grid.fig.suptitle(suptitle, fontsize="medium")
 
             # tighten
-            g.fig.tight_layout()
+            grid.fig.tight_layout()
 
             # overlap
             if overlap:
-                g.fig.subplots_adjust(hspace=-0.1)
+                grid.fig.subplots_adjust(hspace=-0.1)
 
-            return g.fig
+            return grid.fig
 
 
 # TODO: density umap plot
