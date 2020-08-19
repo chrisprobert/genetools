@@ -1,7 +1,7 @@
 # Config file for automatic testing at travis-ci.com
 
 language: python
-dist: xenial
+dist: bionic
 os: linux
 
 addons:
@@ -9,6 +9,13 @@ addons:
     enabled: true
     paths:
     - tests/results
+  # apt:
+    # Update LLVM to latest so that we can install numba and llvmlite properly (for some reason only errors in py3.6 env?)
+    # sources:
+    #  - sourceline: 'deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic main'
+    #    key_url: 'https://apt.llvm.org/llvm-snapshot.gpg.key'
+    # packages:
+    #  - llvm-dev
 
 cache:
   - pip
